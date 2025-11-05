@@ -1,71 +1,19 @@
-name: Build QEMU for WebAssembly (Browser)
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  build:
-    name: Build for WASM Browser
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Install dependencies & Emscripten SDK
-        run: |
-          sudo apt update
-          sudo apt install -y git make ninja-build python3 pkg-config \
-            gcc g++ cmake autoconf automake libtool bison flex gettext
-          git clone https://github.com/emscripten-core/emsdk.git
-          cd emsdk
-          ./emsdk install latest
-          ./emsdk activate latest
-          echo "EMSDK_PATH=$(pwd)" >> $GITHUB_ENV
-
-      - name: Verify Emscripten
-        run: |
-          source $EMSDK_PATH/emsdk_env.sh
-          emcc -v
-
-      - name: Configure QEMU for WASM
-        run: |
-          source $EMSDK_PATH/emsdk_env.sh
-          mkdir -p build-wasm
-          cd build-wasm
-          emconfigure ../configure \
-            --target-list=x86_64-softmmu \
-            --disable-docs \
-            --disable-tools \
-            --static \
-            --disable-user \
-            CFLAGS="-O3 -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_ES6=1 -sWASM_BIGINT" \
-            LDFLAGS="-sEXPORT_ALL=1 -sENVIRONMENT=web"
-
-      - name: Build QEMU (WebAssembly)
-        run: |
-          source $EMSDK_PATH/emsdk_env.sh
-          cd build-wasm
-          emmake make -j$(nproc)
-
-      - name: Package build artifacts (JS + WASM)
-        run: |
-          mkdir -p dist
-          # Adjust according to actual build outputs
-          if [ -f build-wasm/qemu-system-x86_64.js ]; then
-            cp build-wasm/qemu-system-x86_64.js dist/
-          fi
-          if [ -f build-wasm/qemu-system-x86_64.wasm ]; then
-            cp build-wasm/qemu-system-x86_64.wasm dist/
-          fi
-          echo "✅ Build complete — files in dist/:"
-          ls -lh dist
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: qemu-wasm-browser
-          path: dist/
+- name: Configure QEMU for WASM
+  run: |
+    source $EMSDK_PATH/emsdk_env.sh
+    mkdir -p build-wasm
+    cd build-wasm
+    CONFIGURE_PATH=$(find .. -maxdepth 3 -type f -name configure | head -n 1)
+    echo "Found configure at: $CONFIGURE_PATH"
+    if [ -z "$CONFIGURE_PATH" ]; then
+      echo "❌ Could not find configure script"
+      exit 1
+    fi
+    emconfigure "$CONFIGURE_PATH" \
+      --target-list=x86_64-softmmu \
+      --disable-docs \
+      --disable-tools \
+      --static \
+      --disable-user \
+      CFLAGS="-O3 -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_ES6=1 -sWASM_BIGINT" \
+      LDFLAGS="-sEXPORT_ALL=1 -sENVIRONMENT=web"
