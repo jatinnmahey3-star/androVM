@@ -1,4 +1,4 @@
-name: Build QEMU for WebAssembly
+name: Build QEMU for WebAssembly (Browser)
 
 on:
   push:
@@ -9,7 +9,9 @@ on:
 
 jobs:
   build:
+    name: Build QEMU WASM
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build python3-pip cmake
+          sudo apt-get install -y git make ninja-build python3-pip cmake
           pip install meson
 
       - name: Setup Emscripten SDK
@@ -26,15 +28,17 @@ jobs:
           cd emsdk
           ./emsdk install latest
           ./emsdk activate latest
-          echo "source $(pwd)/emsdk_env.sh" >> $GITHUB_ENV
           source ./emsdk_env.sh
           emcc -v
 
-      - name: Configure QEMU for WebAssembly
-        run: |
-          source $GITHUB_ENV
-          mkdir build-wasm && cd build-wasm
+      - name: Clone QEMU source
+        run: git clone --depth=1 https://gitlab.com/qemu-project/qemu.git qemu-src
 
+      - name: Configure QEMU for WASM
+        run: |
+          source ./emsdk/emsdk_env.sh
+          mkdir -p build-wasm
+          cd build-wasm
           emconfigure ../qemu-src/configure \
             --target-list=x86_64-softmmu \
             --enable-tcg-interpreter \
@@ -50,17 +54,25 @@ jobs:
             --disable-sdl \
             --disable-opengl \
             --static \
-            "CFLAGS=-O3 -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_ES6=1 -sWASM_BIGINT" \
-            "LDFLAGS=-sEXPORT_ALL=1 -sENVIRONMENT=web"
+            CFLAGS="-O3 -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_ES6=1 -sWASM_BIGINT" \
+            LDFLAGS="-sEXPORT_ALL=1 -sENVIRONMENT=web"
 
-      - name: Build QEMU
+      - name: Build QEMU WASM
         run: |
-          source $GITHUB_ENV
+          source ./emsdk/emsdk_env.sh
           cd build-wasm
           emmake make -j$(nproc)
 
-      - name: Upload WASM + JS output
+      - name: Package WASM + JS
+        run: |
+          mkdir -p dist
+          cp build-wasm/qemu-system-x86_64.js dist/ 2>/dev/null || true
+          cp build-wasm/qemu-system-x86_64.wasm dist/ 2>/dev/null || true
+          echo "✅ Build complete. Files in dist/:"
+          ls -lh dist
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: qemu-wasm
-          path: build-wasm/
+          name: qemu-wasm-browser
+          path: dist/
