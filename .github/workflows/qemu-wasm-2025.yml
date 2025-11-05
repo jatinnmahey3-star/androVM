@@ -1,4 +1,4 @@
-name: Build QEMU WebAssembly (Meson)
+name: Build QEMU WebAssembly (Meson + Emscripten)
 
 on:
   push:
@@ -30,6 +30,27 @@ jobs:
           source ./emsdk_env.sh
           emcc -v
 
+      - name: Create Emscripten cross file for Meson
+        run: |
+          mkdir -p .github/workflows
+          cat > .github/workflows/emscripten.cross << 'EOF'
+[binaries]
+c = '/home/runner/work/androVM/androVM/emsdk/upstream/emscripten/emcc'
+cpp = '/home/runner/work/androVM/androVM/emsdk/upstream/emscripten/em++'
+ar = '/home/runner/work/androVM/androVM/emsdk/upstream/emscripten/emar'
+strip = 'true'
+pkgconfig = '/usr/bin/pkg-config'
+
+[host_machine]
+system = 'wasm'
+cpu_family = 'wasm32'
+cpu = 'wasm32'
+endian = 'little'
+
+[properties]
+needs_exe_wrapper = true
+EOF
+
       - name: Clone QEMU source
         run: git clone --depth=1 https://gitlab.com/qemu-project/qemu.git qemu-src
 
@@ -39,7 +60,7 @@ jobs:
           mkdir -p build-wasm
           cd build-wasm
           meson setup . ../qemu-src \
-            --cross-file ../qemu-src/meson/emscripten.cross \
+            --cross-file ../.github/workflows/emscripten.cross \
             -Dtargets=x86_64-softmmu \
             -Dtcg-interpreter=true \
             -Dglib=disabled \
