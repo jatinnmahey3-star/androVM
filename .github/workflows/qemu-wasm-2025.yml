@@ -24,41 +24,44 @@ jobs:
           cd emsdk
           ./emsdk install latest
           ./emsdk activate latest
-          source ./emsdk_env.sh
-          echo "EMSDK_ENV=$(pwd)/emsdk_env.sh" >> $GITHUB_ENV
+          echo "EMSDK_PATH=$(pwd)" >> $GITHUB_ENV
 
       - name: Verify Emscripten
         run: |
-          source $GITHUB_ENV && emcc -v
+          source $EMSDK_PATH/emsdk_env.sh
+          emcc -v
 
       - name: Configure QEMU for WASM
         run: |
-          source $GITHUB_ENV
+          source $EMSDK_PATH/emsdk_env.sh
           mkdir -p build-wasm
           cd build-wasm
           emconfigure ../configure \
             --target-list=x86_64-softmmu \
             --disable-docs \
+            --disable-tools \
             --static \
             --disable-user \
-            --disable-tools \
-            # (add/change flags below to your needs)
-            CFLAGS="-O3 -sALIASING_FUNCTION_POINTERS=0 -sALLOW_TABLE_GROWTH=1 -sWASM_BIGINT -sMODULARIZE=1 -sEXPORT_ES6=1" \
-            LDFLAGS="-sEXPORT_ALL=1"
+            CFLAGS="-O3 -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_ES6=1 -sWASM_BIGINT" \
+            LDFLAGS="-sEXPORT_ALL=1 -sENVIRONMENT=web"
 
-      - name: Build QEMU
+      - name: Build QEMU (WebAssembly)
         run: |
-          source $GITHUB_ENV
+          source $EMSDK_PATH/emsdk_env.sh
           cd build-wasm
           emmake make -j$(nproc)
 
-      - name: Package artifacts (JS + WASM)
+      - name: Package build artifacts (JS + WASM)
         run: |
           mkdir -p dist
-          # Adjust names according to actual build output
-          cp build-wasm/qemu-system-x86_64.wasm dist/qemu-system-x86_64.wasm || true
-          cp build-wasm/qemu-system-x86_64.js   dist/qemu-system-x86_64.js   || true
-          echo "✅ Build complete. Dist folder contents:"
+          # Adjust according to actual build outputs
+          if [ -f build-wasm/qemu-system-x86_64.js ]; then
+            cp build-wasm/qemu-system-x86_64.js dist/
+          fi
+          if [ -f build-wasm/qemu-system-x86_64.wasm ]; then
+            cp build-wasm/qemu-system-x86_64.wasm dist/
+          fi
+          echo "✅ Build complete — files in dist/:"
           ls -lh dist
 
       - name: Upload artifacts
