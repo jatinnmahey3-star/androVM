@@ -1,4 +1,4 @@
-name: Build QEMU for WebAssembly (Browser)
+name: Build QEMU WebAssembly (Meson)
 
 on:
   push:
@@ -9,17 +9,16 @@ on:
 
 jobs:
   build:
-    name: Build QEMU WASM
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git make ninja-build python3-pip cmake
+          sudo apt-get install -y git python3-pip cmake ninja-build
           pip install meson
 
       - name: Setup Emscripten SDK
@@ -34,36 +33,33 @@ jobs:
       - name: Clone QEMU source
         run: git clone --depth=1 https://gitlab.com/qemu-project/qemu.git qemu-src
 
-      - name: Configure QEMU for WASM
+      - name: Configure QEMU for WebAssembly (Meson)
         run: |
           source ./emsdk/emsdk_env.sh
           mkdir -p build-wasm
           cd build-wasm
-          emconfigure ../qemu-src/configure \
-            --target-list=x86_64-softmmu \
-            --enable-tcg-interpreter \
-            --disable-xen \
-            --disable-kvm \
-            --disable-docs \
-            --disable-tools \
-            --disable-user \
-            --disable-virtfs \
-            --disable-vnc \
-            --disable-curses \
-            --disable-gtk \
-            --disable-sdl \
-            --disable-opengl \
-            --static \
-            CFLAGS="-O3 -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_ES6=1 -sWASM_BIGINT" \
-            LDFLAGS="-sEXPORT_ALL=1 -sENVIRONMENT=web"
+          meson setup . ../qemu-src \
+            --cross-file ../qemu-src/meson/emscripten.cross \
+            -Dtargets=x86_64-softmmu \
+            -Dtcg-interpreter=true \
+            -Dglib=disabled \
+            -Dgtk=disabled \
+            -Dsdl=disabled \
+            -Dxen=disabled \
+            -Dkvm=disabled \
+            -Dvnc=disabled \
+            -Dopengl=disabled \
+            -Ddocs=false \
+            -Dtools=false \
+            -Duser=false
 
-      - name: Build QEMU WASM
+      - name: Build QEMU (WebAssembly)
         run: |
           source ./emsdk/emsdk_env.sh
           cd build-wasm
-          emmake make -j$(nproc)
+          ninja -j$(nproc)
 
-      - name: Package WASM + JS
+      - name: Collect WASM + JS
         run: |
           mkdir -p dist
           cp build-wasm/qemu-system-x86_64.js dist/ 2>/dev/null || true
